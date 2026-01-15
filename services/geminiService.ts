@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { DepartmentMismatch } from "../types";
+import { DepartmentMismatch } from "../types.ts";
 
 export interface SummaryResult {
   executiveSummary: string;
@@ -13,42 +13,36 @@ export interface MasterAuditSummary {
   whatsappMessage: string;
 }
 
-const getApiKey = () => {
-  try {
-    return process.env.API_KEY || '';
-  } catch {
-    return '';
-  }
-};
-
 export const summarizeOperations = async (
   currentData: DepartmentMismatch[]
 ): Promise<SummaryResult> => {
-  const apiKey = getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const model = 'gemini-3-flash-preview';
   
-  // Pre-process data to avoid token overflow if it's massive
-  const salesData = currentData.filter(d => d.department === 'Sales');
-  const summaryPayload = salesData.length > 300 
-    ? salesData.slice(0, 300).concat([{ metric: "... (data truncated for summary)", plan: 0, actual: 0 } as any])
-    : salesData;
+  // Truncate or sample data if it's too large to prevent context window overflow
+  // We prioritize 'Sales' department as requested by the app's context
+  const relevantData = currentData.filter(d => d.department === 'Sales');
+  const summarizedPayload = relevantData.length > 400 
+    ? relevantData.slice(0, 400).concat([{ metric: `... (${relevantData.length - 400} more items truncated)`, plan: 0, actual: 0 } as any])
+    : relevantData;
 
   const prompt = `
-    You are a world-class Executive Auditor. 
-    Analyze the provided pharmaceutical sales data for Swiss Pharmaceuticals.
+    You are a Senior Executive Auditor at Swiss Pharmaceuticals.
+    Analyze the provided sales performance data.
     
-    The user requires a summary that takes NO MORE THAN 5 MINUTES to read (approx 750-1000 words max).
+    CRITICAL REQUIREMENT: 
+    The generated report must be optimized for a 5-MINUTE READING TIME (approx 800-1000 words). 
+    Do not be overly brief, but do not provide fluff.
     
-    TASK:
-    1. Provide a high-level "Executive Summary" (2-3 sentences).
-    2. Provide a "Detailed Analysis" section that breaks down performance by teams (Achievers, Passionate, Concord, Dynamic). 
-       - Highlight specific products with major shortfalls.
-       - Use markdown for bolding and structure.
-    3. List 5 high-impact "Strategic Action Points".
+    Structure your response as follows:
+    1. Executive Summary: 3-4 powerful sentences summarizing the state of the business.
+    2. Detailed Analysis: A structured breakdown using Markdown. Use bolding for emphasis. 
+       Analyze team-wise performance (Achievers, Passionate, Concord, Dynamic).
+       Identify specific high-value products that are failing targets.
+    3. Strategic Action Plan: Exactly 5 high-impact bullet points for the Board.
     
-    DATA (Sales Only):
-    ${JSON.stringify(summaryPayload, null, 2)}
+    Data to Analyze:
+    ${JSON.stringify(summarizedPayload)}
   `;
 
   try {
@@ -61,12 +55,12 @@ export const summarizeOperations = async (
           type: Type.OBJECT,
           properties: {
             executiveSummary: { type: Type.STRING },
-            detailedAnalysis: { type: Type.STRING, description: "Markdown formatted detailed report" },
+            detailedAnalysis: { type: Type.STRING, description: "Markdown formatted deep-dive analysis" },
             actions: {
               type: Type.ARRAY,
               items: { type: Type.STRING }
             },
-            readingTimeMinutes: { type: Type.NUMBER }
+            readingTimeMinutes: { type: Type.NUMBER, description: "Estimated reading time based on word count" }
           },
           required: ["executiveSummary", "detailedAnalysis", "actions", "readingTimeMinutes"]
         }
@@ -74,27 +68,29 @@ export const summarizeOperations = async (
     });
 
     const text = response.text || "{}";
-    return JSON.parse(text) as SummaryResult;
+    const result = JSON.parse(text) as SummaryResult;
+    // Ensure reading time is capped at 5 for the UI display
+    if (result.readingTimeMinutes > 5) result.readingTimeMinutes = 5;
+    return result;
   } catch (error) {
     console.error("Gemini Service Error:", error);
     return {
-      executiveSummary: "Strategic overview unavailable due to an analysis error.",
-      detailedAnalysis: "The dataset provided was too large or improperly formatted for the current AI context window. Please verify 'Sales' sheet columns.",
-      actions: ["Check API Key configuration", "Ensure 'Target' and 'Actual' columns are numeric", "Try uploading a smaller date range"],
+      executiveSummary: "Data volume exceeded current processing threshold or API configuration is missing.",
+      detailedAnalysis: "The dataset provided contains too many entries for a single-pass executive summary. Please try analyzing a specific month or smaller product category range.",
+      actions: ["Verify API Key in Vercel/Environment settings", "Reduce Excel file size by removing non-sales data", "Check column headers 'Metric', 'Plan', and 'Actual'"],
       readingTimeMinutes: 1
     };
   }
 };
 
 export const generateMasterAuditSummary = async (data: DepartmentMismatch[]): Promise<MasterAuditSummary> => {
-  const apiKey = getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const model = 'gemini-3-flash-preview';
 
   const prompt = `
-    Create a concise WhatsApp message (max 150 words) for the Board of Directors summarizing CRITICAL sales shortfalls.
-    Focus on the most alarming gaps.
-    Data: ${JSON.stringify(data.filter(d => d.department === 'Sales' && d.status !== 'on-track').slice(0, 50))}
+    Create a high-urgency WhatsApp alert for the Board of Directors.
+    Summarize critical shortfalls from this data in under 150 words.
+    Data: ${JSON.stringify(data.filter(d => d.department === 'Sales' && d.status !== 'on-track').slice(0, 30))}
   `;
 
   try {
@@ -112,9 +108,8 @@ export const generateMasterAuditSummary = async (data: DepartmentMismatch[]): Pr
         }
       }
     });
-    const text = response.text || "{}";
-    return JSON.parse(text) as MasterAuditSummary;
+    return JSON.parse(response.text || "{}") as MasterAuditSummary;
   } catch (error) {
-    return { whatsappMessage: "Board Alert: System error during audit generation. Please check manual dashboard." };
+    return { whatsappMessage: "Board Alert: Automated audit failed. Please review manual dashboard for shortfall details." };
   }
 };

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { DepartmentMismatch, HolidaysMap } from '../types';
-import { summarizeOperations, SummaryResult } from '../services/geminiService';
+import { DepartmentMismatch, HolidaysMap } from '../types.ts';
+import { summarizeOperations, SummaryResult } from '../services/geminiService.ts';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts';
 
 interface DashboardProps {

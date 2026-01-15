@@ -1,5 +1,5 @@
 
-import { DepartmentMismatch, HolidaysMap, LocksMap } from '../types';
+import { DepartmentMismatch, HolidaysMap, LocksMap } from '../types.ts';
 
 const DB_NAME = 'SwissPharmaDatabase';
 const DB_VERSION = 1;

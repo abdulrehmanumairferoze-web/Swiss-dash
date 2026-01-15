@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { DepartmentMismatch, HolidaysMap, LocksMap } from '../types';
+import { DepartmentMismatch, HolidaysMap, LocksMap } from '../types.ts';
 import * as XLSX from 'xlsx';
 
 interface DataEntryProps {
